@@ -7,8 +7,6 @@ CREATE TABLE d_city (
     city_id SERIAL PRIMARY KEY,
     city_name VARCHAR(100) NOT NULL,
     country_id INT NOT NULL,
-    latitude DECIMAL(9,6),
-    longitude DECIMAL(9,6),
     FOREIGN KEY (country_id) REFERENCES d_country(country_id)
 );
 
@@ -24,7 +22,8 @@ CREATE TABLE d_room_type (
 
 CREATE TABLE d_currency (
     currency_id SERIAL PRIMARY KEY,
-    currency_code VARCHAR(10) UNIQUE NOT NULL
+    currency_code VARCHAR(10) UNIQUE NOT NULL,
+    convertion_rate_to_usd DECIMAL(15,2)
 );
 
 CREATE TABLE d_date (
@@ -32,13 +31,19 @@ CREATE TABLE d_date (
     date_actual DATE NOT NULL,
     year INT NOT NULL,
     month INT NOT NULL,
-    day INT NOT NULL,
-    month_name VARCHAR(15),
-    quarter INT
+    day INT
+);
+
+CREATE TABLE d_weather_normals (
+    country_id INT NOT NULL,
+    month INT NOT NULL,
+    normals DECIMAL,
+    PRIMARY KEY (country_id, month),
+    FOREIGN KEY (country_id) REFERENCES d_country(country_id)
 );
 
 
-CREATE TABLE airbnb_listing (
+CREATE TABLE d_airbnb_listing (
     listing_id BIGINT PRIMARY KEY,
     listing_name VARCHAR(255),
     city_id INT NOT NULL,
@@ -47,7 +52,6 @@ CREATE TABLE airbnb_listing (
     currency_id INT NOT NULL,
     guest_count INT,
     bedroom_count INT,
-    beds_count INT,
     cancellation_policy VARCHAR(100),
     rating_overall DECIMAL(4,2),
     ttm_revenue DECIMAL(15,2),
@@ -58,23 +62,7 @@ CREATE TABLE airbnb_listing (
     FOREIGN KEY (currency_id) REFERENCES d_currency(currency_id)
 );
 
-
-CREATE TABLE airbnb_monthly (
-    listing_id BIGINT NOT NULL,
-    date_id INT NOT NULL,
-    vacant_days INT,
-    reserved_days INT,
-    avg_length_of_stay DECIMAL(5,2),
-    occupancy DECIMAL(5,2),
-    rate_avg DECIMAL(15,2),
-    native_revenue DECIMAL(15,2),
-    PRIMARY KEY (listing_id, date_id),
-    FOREIGN KEY (listing_id) REFERENCES airbnb_listing(listing_id),
-    FOREIGN KEY (date_id) REFERENCES d_date(date_id)
-);
-
-
-CREATE TABLE tourism_stats (
+CREATE TABLE d_country_tourism (
     country_id INT NOT NULL,
     year INT NOT NULL,
     total_arrivals BIGINT,
@@ -87,13 +75,16 @@ CREATE TABLE tourism_stats (
 );
 
 
-CREATE TABLE weather_normals (
-    country_id INT NOT NULL,
-    month INT NOT NULL,
-    avg_temperature DECIMAL(5,2),
-    avg_precipitation DECIMAL(6,2),
-    avg_humidity DECIMAL(5,2),
-    avg_wind_speed DECIMAL(5,2),
-    PRIMARY KEY (country_id, month),
-    FOREIGN KEY (country_id) REFERENCES d_country(country_id)
+CREATE TABLE f_monthly_airbnb (
+    listing_id BIGINT NOT NULL,
+    date_id INT NOT NULL,
+    vacant_days INT,
+    reserved_days INT,
+    avg_length_of_stay DECIMAL(5,2),
+    occupancy DECIMAL(5,2),
+    rate_avg DECIMAL(15,2),
+    native_revenue DECIMAL(15,2),
+    PRIMARY KEY (listing_id, date_id),
+    FOREIGN KEY (listing_id) REFERENCES d_airbnb_listing(listing_id),
+    FOREIGN KEY (date_id) REFERENCES d_date(date_id)
 );
