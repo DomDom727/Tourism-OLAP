@@ -25,5 +25,20 @@ services:
     depends_on:
       - postgres
 
+  etl:
+    build: ./etl
+    container_name: etl_loader
+    depends_on:
+      - postgres
+    environment:
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: stadvdb_db
+    volumes:
+      - ./data:/data
+    command: ["python", "etl.py"]
+
 volumes:
   pgdata: {}
