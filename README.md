@@ -9,3 +9,4 @@
 - Port: `5431`
 - Username: `postgres`
 - Password: `postgres`
+- Database name: `stadvdb_db`
