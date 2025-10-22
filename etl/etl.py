@@ -134,9 +134,9 @@ load_table(d_listing_type, "d_listing_type")
 load_table(d_currency, "d_currency")
 load_table(d_date, "d_date")
 
-load_table(airbnb_listing, "airbnb_listing")
-load_table(airbnb_monthly, "airbnb_monthly")
-load_table(tourism_stats, "tourism_stats")
-load_table(weather_normals, "weather_normals")
+load_table(airbnb_listing, "d_airbnb_listing")
+load_table(monthly_airbnb, "f_monthly_airbnb")
+load_table(country_tourism, "d_country_tourism")
+load_table(weather_normals, "d_weather_normals")
 
 print("\nsuccessful ETL!")
