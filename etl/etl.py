@@ -85,10 +85,10 @@ def load_source_tables(src_engine):
     weather = pd.read_sql("SELECT * FROM weather_data", src_engine)
     return listings, monthly, tourism, weather
 
-def populate_dimensions(listings_df, wh_engine):
+def populate_dimensions(listings_df, tourism_df, wh_engine):
     with wh_engine.begin() as conn:
         # Load countries
-        for country in listings_df['country'].dropna().unique():
+        for country in tourism_df['country'].dropna().unique():
             conn.execute(text("""
                 INSERT INTO dim_country (country_name)
                 VALUES (:country)
@@ -190,7 +190,7 @@ def main():
     listings, monthly, tourism, weather = load_source_tables(src_engine)
 
     print("Populating dimension tables...")
-    populate_dimensions(listings, wh_engine)
+    populate_dimensions(listings, tourism, wh_engine)
 
     print("Loading fact tables...")
     load_facts(monthly, tourism, weather, wh_engine)
