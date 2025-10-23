@@ -3,7 +3,7 @@ import psycopg2
 from sqlalchemy import create_engine, text
 
 SOURCE_DB_URL = "postgresql://postgres:postgres@source_db:5432/source_db"
-WAREHOUSE_DB_URL = "postgresql://postgres:postgres@postgres_db:5432/stadvdb_db"
+WAREHOUSE_DB_URL = "postgresql://postgres:postgres@postgres:5432/stadvdb_db"
 
 def create_connection(db_url):
     engine = create_engine(db_url)

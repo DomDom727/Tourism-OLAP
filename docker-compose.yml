@@ -39,10 +39,15 @@ services:
       - postgres
     environment:
       SOURCE_DB_URL: postgresql://postgres:postgres@source_db:5432/source_db
-      WAREHOUSE_DB_URL: postgresql://postgres:postgres@warehouse_db:5432/stadvdb_db
+      WAREHOUSE_DB_URL: postgresql://postgres:postgres@postgres:5432/stadvdb_db
     volumes:
       - ./source_data:/data
-    command: ["python", "wait_for_dbs.py"]
+    command: >
+      bash -c "
+        python wait_for_dbs.py &&
+        python load_source.py &&
+        python etl.py
+      "
 
   pgadmin:
     image: dpage/pgadmin4
