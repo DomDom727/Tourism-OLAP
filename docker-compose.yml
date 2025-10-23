@@ -1,4 +1,20 @@
 services:
+
+  source_db:
+    image: postgres:17
+    container_name: source_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: source_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - ./init-scripts/init_source.sql:/docker-entrypoint-initdb.d/init_source.sql
+      - ./source_data:/data
+      - source_pgdata:/var/lib/postgresql/data
+
   postgres:
     image: postgres:17
     container_name: postgres_db
@@ -10,8 +26,19 @@ services:
     ports:
       - "5431:5432"
     volumes:
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-      - ./pgdata:/var/lib/postgresql/data
+      - ./init-scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./warehouse_pgdata:/var/lib/postgresql/data
+  
+  etl_service:
+    build: ./etl
+    container_name: etl_service
+    depends_on:
+      - source_db
+      - warehouse_db
+    environment:
+      SOURCE_DB_URL: postgresql://admin:password@source_db:5432/source_db
+      WAREHOUSE_DB_URL: postgresql://admin:password@warehouse_db:5432/warehouse_db
+    command: ["python", "etl.py"]
 
   pgadmin:
     image: dpage/pgadmin4
@@ -26,4 +53,5 @@ services:
       - postgres
 
 volumes:
-  pgdata: {}
+  source_pgdata:
+  warehouse_pgdata:
