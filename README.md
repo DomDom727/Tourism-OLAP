@@ -10,3 +10,7 @@
 - Username: `postgres`
 - Password: `postgres`
 - Database name: `stadvdb_db`
+
+**To run Dashboard**
+1. Initialize the database
+2. Open the cmd in the `./olap-dashboard` directory and run the `npm install` and `npm run dev`
