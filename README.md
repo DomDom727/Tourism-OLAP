@@ -13,4 +13,6 @@
 
 **To run Dashboard**
 1. Initialize the database
-2. Open the cmd in the `./olap-dashboard` directory and run the `npm install` and `npm run dev`
+2. Open a terminal in the `./olap-dashboard` directory and run the command `node server.js`
+3. Open a new terminal in the same `./olap-dashboard` directory and run the `npm install` and `npm run dev` commands
+4. Open browser to http://localhost:5173/
