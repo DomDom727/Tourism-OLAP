@@ -1,201 +1,158 @@
 import pandas as pd
-import psycopg2
-from sqlalchemy import create_engine, text
+import numpy as np
+from sqlalchemy import create_engine
+import os
 
-SOURCE_DB_URL = "postgresql://postgres:postgres@source_db:5432/source_db"
 WAREHOUSE_DB_URL = "postgresql://postgres:postgres@postgres:5432/stadvdb_db"
 
-def create_connection(db_url):
-    engine = create_engine(db_url)
-    conn = engine.connect()
-    return conn, engine
+CSV_PATHS = {
+    "listings": "/data/listings_data.csv",
+    "monthly":  "/data/monthly_airbnb_data.csv",
+    "tourism":  "/data/tourism_data.csv",
+    "weather":  "/data/weather_data.csv"
+}
 
-def initialize_dimensions(wh_engine):
-    with wh_engine.begin() as conn:
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS dim_country (
-                country_id SERIAL PRIMARY KEY,
-                country_name TEXT UNIQUE
-            );
-            CREATE TABLE IF NOT EXISTS dim_city (
-                city_id SERIAL PRIMARY KEY,
-                city_name TEXT,
-                country_id INT REFERENCES dim_country(country_id),
-                UNIQUE(city_name, country_id)
-            );
-            CREATE TABLE IF NOT EXISTS dim_listing (
-                listing_id TEXT PRIMARY KEY,
-                listing_name TEXT,
-                listing_type TEXT,
-                room_type TEXT,
-                currency TEXT,
-                guests FLOAT,
-                bedrooms FLOAT,
-                cancellation_policy TEXT,
-                rating_overall FLOAT,
-                ttm_revenue FLOAT,
-                ttm_avg_rate FLOAT,
-                city_id INT REFERENCES dim_city(city_id)
-            );
-        """))
 
-def initialize_facts(wh_engine):
-    with wh_engine.begin() as conn:
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS fact_airbnb_monthly (
-                id SERIAL PRIMARY KEY,
-                listing_id TEXT REFERENCES dim_listing(listing_id),
-                date DATE,
-                vacant_days INT,
-                reserved_days INT,
-                length_of_stay_avg FLOAT,
-                occupancy FLOAT,
-                rate_avg FLOAT,
-                native_revenue FLOAT,
-                revenue FLOAT
-            );
+def transform_dataframes(df_listings, df_monthly, df_tourism, df_weather):
 
-            CREATE TABLE IF NOT EXISTS fact_tourism (
-                id SERIAL PRIMARY KEY,
-                country_id INT REFERENCES dim_country(country_id),
-                year INT,
-                total_arrivals FLOAT,
-                arrivals_personal FLOAT,
-                arrivals_business FLOAT,
-                tourism_expenditure FLOAT,
-                total_departures FLOAT
-            );
+    countries = (
+        pd.concat([
+            df_listings['country'],
+            df_monthly['country'],
+            df_tourism['country'],
+            df_weather['country']
+        ])
+        .dropna()
+        .drop_duplicates()
+        .sort_values()
+        .reset_index(drop=True)
+    )
 
-            CREATE TABLE IF NOT EXISTS fact_weather (
-                id SERIAL PRIMARY KEY,
-                country_id INT REFERENCES dim_country(country_id),
-                month TEXT,
-                min_temp FLOAT,
-                mean_temp FLOAT,
-                max_temp FLOAT,
-                precipitation FLOAT,
-                hours_of_sunshine FLOAT
-            );
-        """))
+    df_country = pd.DataFrame({
+        'country_id': range(1, len(countries) + 1),
+        'country_name': countries
+    })
 
-def load_source_tables(src_engine):
-    listings = pd.read_sql("SELECT * FROM listings_data", src_engine)
-    monthly = pd.read_sql("SELECT * FROM monthly_airbnb_data", src_engine)
-    tourism = pd.read_sql("SELECT * FROM tourism_data", src_engine)
-    weather = pd.read_sql("SELECT * FROM weather_data", src_engine)
-    return listings, monthly, tourism, weather
 
-def populate_dimensions(listings_df, wh_engine):
-    with wh_engine.begin() as conn:
-        # Load countries
-        for country in listings_df['country'].dropna().unique():
-            conn.execute(text("""
-                INSERT INTO dim_country (country_name)
-                VALUES (:country)
-                ON CONFLICT (country_name) DO NOTHING;
-            """), {"country": country})
+    df_monthly['date'] = pd.to_datetime(df_monthly['date'])
+    df_date = (
+        df_monthly[['date']]
+        .drop_duplicates()
+        .rename(columns={'date': 'date_actual'})
+        .sort_values(by='date_actual')
+        .reset_index(drop=True)
+    )
+    df_date['date_id'] = range(1, len(df_date) + 1)
+    df_date['year'] = df_date['date_actual'].dt.year
+    df_date['month'] = df_date['date_actual'].dt.month
+    df_date['day'] = df_date['date_actual'].dt.day
+    df_date = df_date[['date_id', 'date_actual', 'year', 'month', 'day']]
 
-        # Load cities
-        cities = listings_df[['city', 'country']].dropna().drop_duplicates()
-        for _, row in cities.iterrows():
-            conn.execute(text("""
-                INSERT INTO dim_city (city_name, country_id)
-                SELECT :city, c.country_id FROM dim_country c
-                WHERE c.country_name = :country
-                ON CONFLICT (city_name, country_id) DO NOTHING;
-            """), {"city": row['city'], "country": row['country']})
 
-        # Load listings
-        for _, row in listings_df.iterrows():
-            conn.execute(text("""
-                INSERT INTO dim_listing (
-                    listing_id, listing_name, listing_type, room_type,
-                    currency, guests, bedrooms, cancellation_policy,
-                    rating_overall, ttm_revenue, ttm_avg_rate, city_id
-                )
-                SELECT
-                    :listing_id, :listing_name, :listing_type, :room_type,
-                    :currency, :guests, :bedrooms, :cancellation_policy,
-                    :rating_overall, :ttm_revenue, :ttm_avg_rate, c.city_id
-                FROM dim_city c
-                JOIN dim_country d ON c.country_id = d.country_id
-                WHERE c.city_name = :city AND d.country_name = :country
-                ON CONFLICT (listing_id) DO NOTHING;
-            """), {
-                "listing_id": row['listing_id'],
-                "listing_name": row['listing_name'],
-                "listing_type": row['listing_type'],
-                "room_type": row['room_type'],
-                "currency": row['currency'],
-                "guests": row['guests'],
-                "bedrooms": row['bedrooms'],
-                "cancellation_policy": row['cancellation_policy'],
-                "rating_overall": row['rating_overall'],
-                "ttm_revenue": row['ttm_revenue'],
-                "ttm_avg_rate": row['ttm_avg_rate'],
-                "city": row['city'],
-                "country": row['country']
-            })
+    df_airbnb_listing = df_listings.merge(df_country, how='left',
+                                          left_on='country', right_on='country_name')
 
-def load_facts(monthly_df, tourism_df, weather_df, wh_engine):
-    with wh_engine.begin() as conn:
-        for _, row in monthly_df.iterrows():
-            conn.execute(text("""
-                INSERT INTO fact_airbnb_monthly (
-                    listing_id, date, vacant_days, reserved_days,
-                    length_of_stay_avg, occupancy, rate_avg,
-                    native_revenue, revenue
-                )
-                VALUES (
-                    :listing_id, to_date(:date, 'YYYY-MM'),
-                    :vacant_days, :reserved_days, :length_of_stay_avg,
-                    :occupancy, :rate_avg, :native_revenue, :revenue
-                );
-            """), row.to_dict())
+    df_airbnb_listing = df_airbnb_listing.rename(columns={
+        'listing_id': 'listing_id',
+        'listing_name': 'listing_name',
+        'city': 'city',
+        'listing_type': 'listing_type',
+        'room_type': 'room_type',
+        'currency': 'currency_code',
+        'guests': 'guest_count',
+        'bedrooms': 'bedroom_count',
+        'cancellation_policy': 'cancellation_policy',
+        'rating_overall': 'rating_overall',
+        'ttm_revenue': 'ttm_revenue',
+        'ttm_avg_rate': 'ttm_avg_rate'
+    })[
+        ['listing_id', 'listing_name', 'city', 'country_id', 'listing_type',
+         'room_type', 'currency_code', 'guest_count', 'bedroom_count',
+         'cancellation_policy', 'rating_overall', 'ttm_revenue', 'ttm_avg_rate']
+    ]
+    df_airbnb_listing['listing_id'] = df_airbnb_listing['listing_id'].astype('int64')
 
-        for _, row in tourism_df.iterrows():
-            conn.execute(text("""
-                INSERT INTO fact_tourism (
-                    country_id, year, total_arrivals,
-                    arrivals_personal, arrivals_business,
-                    tourism_expenditure, total_departures
-                )
-                SELECT c.country_id, :year, :total_arrivals,
-                       :arrivals_personal, :arrivals_business,
-                       :tourism_expenditure, :total_departures
-                FROM dim_country c WHERE c.country_name = :country;
-            """), row.to_dict())
 
-        for _, row in weather_df.iterrows():
-            conn.execute(text("""
-                INSERT INTO fact_weather (
-                    country_id, month, min_temp, mean_temp,
-                    max_temp, precipitation, hours_of_sunshine
-                )
-                SELECT c.country_id, :month, :min_temp, :mean_temp,
-                       :max_temp, :precipitation, :hours_of_sunshine
-                FROM dim_country c WHERE c.country_name = :country;
-            """), row.to_dict())
+    month_cols = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    month_map = {m: i+1 for i, m in enumerate(month_cols)}
+    df_weather['month'] = df_weather['month'].map(month_map)
+
+    df_weather_normals = df_weather.merge(df_country, how='left',
+                                          left_on='country', right_on='country_name')[
+        ['country_id', 'month', 'mean_temp', 'min_temp', 'max_temp',
+         'precipitation', 'hours_of_sunshine']
+    ]
+    df_weather_normals = (df_weather_normals
+                          .drop_duplicates(subset=['country_id', 'month'])
+                          .sort_values(['country_id', 'month'])
+                          .reset_index(drop=True))
+
+
+    df_tourism_dw = df_tourism.merge(df_country, how='left',
+                                     left_on='country', right_on='country_name')[
+        ['country_id', 'year', 'total_arrivals', 'total_departures',
+         'tourism_expenditure', 'arrivals_personal', 'arrivals_business']
+    ]
+    df_tourism_dw = df_tourism_dw.drop_duplicates(subset=['country_id', 'year'])
+
+
+    df_monthly_airbnb = df_monthly.merge(df_country, how='left',
+                                         left_on='country', right_on='country_name')
+    df_monthly_airbnb = df_monthly_airbnb.merge(df_date, how='left',
+                                                left_on='date', right_on='date_actual')
+
+    df_monthly_airbnb = df_monthly_airbnb.rename(columns={
+        'length_of_stay_avg': 'avg_length_of_stay'
+    })[
+        ['listing_id', 'date_id', 'country_id', 'vacant_days', 'reserved_days',
+         'avg_length_of_stay', 'occupancy', 'rate_avg', 'native_revenue']
+    ]
+    df_monthly_airbnb['listing_id'] = df_monthly_airbnb['listing_id'].astype('int64')
+
+    return {
+        "country": df_country,
+        "date": df_date,
+        "airbnb_listing": df_airbnb_listing,
+        "weather_normals": df_weather_normals,
+        "tourism": df_tourism_dw,
+        "monthly_airbnb": df_monthly_airbnb
+    }
+
+
+def load_to_warehouse(transformed_dfs, engine):
+    load_order = ["country", "date", "airbnb_listing",
+                  "weather_normals", "tourism", "monthly_airbnb"]
+
+    with engine.begin() as connection:  # starts a transaction
+        try:
+            for table_name in load_order:
+                df = transformed_dfs[table_name]
+                print(f"Loading {table_name} ({len(df)} rows)...")
+                df.to_sql(table_name, connection, if_exists="replace", index=False)
+                print(f"Loaded {table_name} successfully.")
+
+            print("All tables loaded successfully. Transaction committed.")
+        except Exception as e:
+            print(f"Error during load: {e}")
+            print("Transaction rolled back automatically.")
+            raise
 
 def main():
-    print("Connecting to databases...")
-    src_conn, src_engine = create_connection(SOURCE_DB_URL)
-    wh_conn, wh_engine = create_connection(WAREHOUSE_DB_URL)
+    print("Connecting to warehouse database...")
+    engine = create_engine(WAREHOUSE_DB_URL)
 
-    print("Initializing warehouse schema...")
-    initialize_dimensions(wh_engine)
-    initialize_facts(wh_engine)
+    print("Transforming raw dataframes...")
 
-    print("Loading data from source database...")
-    listings, monthly, tourism, weather = load_source_tables(src_engine)
+    df_listings = pd.read_csv("/data/listings_data.csv")
+    df_monthly = pd.read_csv("/data/monthly_airbnb_data.csv")
+    df_tourism = pd.read_csv("/data/tourism_data.csv")
+    df_weather = pd.read_csv("/data/weather_data.csv")
 
-    print("Populating dimension tables...")
-    populate_dimensions(listings, wh_engine)
+    transformed_dfs = transform_dataframes(df_listings, df_monthly, df_tourism, df_weather)
 
-    print("Loading fact tables...")
-    load_facts(monthly, tourism, weather, wh_engine)
-
-    print("ETL process complete.")
+    print("Loading transformed data into warehouse (transactional)...")
+    load_to_warehouse(transformed_dfs, engine)
 
 if __name__ == "__main__":
     main()
