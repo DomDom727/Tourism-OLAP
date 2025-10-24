@@ -88,7 +88,24 @@ app.get("/api/occupancy-vs-arrivals", async (req, res) => {
 // --- 3. Occupancy by Listing Type ---
 app.get("/api/occupancy-by-type", async (req, res) => {
   try {
-    const { clause, params } = addCountryFilter(req);
+    const { country, listing_type } = req.query;
+
+    const conditions = [];
+    const params = [];
+    let paramIndex = 1;
+
+    if (country && country !== "All Countries") {
+      conditions.push(`LOWER(c.country_name) = LOWER($${paramIndex++})`);
+      params.push(country);
+    }
+
+    if (listing_type && listing_type !== "All Types") {
+      conditions.push(`LOWER(a.listing_type) = LOWER($${paramIndex++})`);
+      params.push(listing_type);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
     const query = `
       SELECT 
         CASE WHEN GROUPING(c.country_name) = 1 THEN 'ALL COUNTRIES' ELSE c.country_name END AS country_name,
@@ -98,10 +115,11 @@ app.get("/api/occupancy-by-type", async (req, res) => {
       FROM monthly_airbnb m
       JOIN airbnb_listing a ON m.listing_id = a.listing_id
       JOIN country c ON m.country_id = c.country_id
-      ${clause}
+      ${whereClause}
       GROUP BY ROLLUP (c.country_name, a.listing_type)
       ORDER BY c.country_name, a.listing_type;
     `;
+
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
@@ -113,42 +131,60 @@ app.get("/api/occupancy-by-type", async (req, res) => {
 // --- 4. Occupancy by Rating Band ---
 app.get("/api/occupancy-by-rating", async (req, res) => {
   try {
-    const { clause, params } = addCountryFilter(req);
+    const { country, room_type } = req.query;
+
+    const conditions = [];
+    const params = [];
+    let paramIndex = 1;
+
+    if (country && country !== "All Countries") {
+      conditions.push(`LOWER(c.country_name) = LOWER($${paramIndex++})`);
+      params.push(country);
+    }
+
+    if (room_type && room_type !== "All Room Types") {
+      conditions.push(`LOWER(r.room_type) = LOWER($${paramIndex++})`);
+      params.push(room_type);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
     const query = `
       WITH rating_band AS (
         SELECT 
-          a.listing_id,
-          a.country_id,
-          a.room_type,
-          CASE 
-            WHEN a.rating_overall >= 4.5 THEN 'Excellent (4.5–5.0)'
-            WHEN a.rating_overall >= 4.0 THEN 'Good (4.0–4.49)'
-            WHEN a.rating_overall >= 3.0 THEN 'Average (3.0–3.99)'
-            WHEN a.rating_overall IS NULL THEN 'Unrated'
-            ELSE 'Low (<3.0)'
-          END AS rating_group
+            a.listing_id,
+            a.country_id,
+            a.room_type,
+            CASE 
+                WHEN a.rating_overall >= 4.5 THEN 'Excellent (4.5–5.0)'
+                WHEN a.rating_overall >= 4.0 THEN 'Good (4.0–4.49)'
+                WHEN a.rating_overall >= 3.0 THEN 'Average (3.0–3.99)'
+                WHEN a.rating_overall IS NULL THEN 'Unrated'
+                ELSE 'Low (<3.0)'
+            END AS rating_group
         FROM airbnb_listing a
       )
       SELECT 
-        CASE WHEN GROUPING(r.rating_group) = 1 THEN 'ALL RATING GROUPS' ELSE r.rating_group END AS rating_group,
-        CASE WHEN GROUPING(c.country_name) = 1 THEN 'ALL COUNTRIES' ELSE c.country_name END AS country_name,
-        CASE WHEN GROUPING(r.room_type) = 1 THEN 'ALL ROOM TYPES' ELSE r.room_type END AS room_type,
-        ROUND(AVG(m.occupancy)::numeric, 2) AS avg_occupancy,
-        COUNT(DISTINCT m.listing_id) AS listing_count
+          CASE WHEN GROUPING(r.rating_group) = 1 THEN 'ALL RATING GROUPS' ELSE r.rating_group END AS rating_group,
+          CASE WHEN GROUPING(c.country_name) = 1 THEN 'ALL COUNTRIES' ELSE c.country_name END AS country_name,
+          CASE WHEN GROUPING(r.room_type) = 1 THEN 'ALL ROOM TYPES' ELSE r.room_type END AS room_type,
+          ROUND(AVG(m.occupancy)::numeric, 2) AS avg_occupancy,
+          COUNT(DISTINCT m.listing_id) AS listing_count
       FROM monthly_airbnb m
       JOIN rating_band r ON m.listing_id = r.listing_id
       JOIN country c ON m.country_id = c.country_id
-      ${clause}
+      ${whereClause}
       GROUP BY ROLLUP (r.rating_group, c.country_name, r.room_type)
       ORDER BY r.rating_group, c.country_name, r.room_type;
     `;
+
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
     console.error("/api/occupancy-by-rating error:", err);
     res.status(500).json({ error: err.message });
   }
-})
+});
 
 // --- 5. Tourism Trends ---
 app.get("/api/tourism-rollup", async (req, res) => {

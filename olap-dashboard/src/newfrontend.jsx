@@ -7,13 +7,27 @@ import {
 export default function AirbnbAnalyticsDashboard() {
   // --- States ---
   const [countries, setCountries] = useState(["All Countries", "cambodia", "indonesia", "malaysia", "philippines", "singapore", "thailand", "vietnam"]);
+  const [listing_types, setListingType] = useState(['All listing types', 'Earthen home', 'Entire apartment', 'Entire bed and breakfast', 
+    'Entire bungalow', 'Entire cabin', 'Entire chalet', 'Entire condo', 'Entire condominium', 
+    'Entire condominium (condo)', 'Entire cottage', 'Entire guest suite', 'Entire guesthouse', 
+    'Entire home', 'Entire home/apt', 'Entire hostel', 'Entire loft', 'Entire place', 'Entire rental unit', 
+    'Entire residential home', 'Entire resort', 'Entire serviced apartment', 'Entire townhouse', 'Entire vacation home', 
+    'Entire villa', 'Island', 'Private room', 'Private room in bed and breakfast', 'Private room in bungalow', 'Private room in cabin', 
+    'Private room in condo', 'Private room in condominium (condo)', 'Private room in cottage', 'Private room in farm stay', 'Private room in guest suite', 
+    'Private room in guesthouse', 'Private room in home', 'Private room in hostel', 'Private room in house', 'Private room in loft', 'Private room in nature lodge', 'Private room in rental unit', 'Private room in resort', 'Private room in serviced apartment', 'Private room in tiny home', 'Private room in townhouse', 'Private room in vacation home', 'Private room in villa', 'Room in aparthotel', 'Room in bed and breakfast', 'Room in boutique hotel', 'Room in hostel', 'Room in hotel', 'Room in nature lodge', 'Room in serviced apartment', 'Shared room in bed and breakfast', 'Shared room in boutique hotel', 'Shared room in hostel', 'Shared room in rental unit', 'Shared room in townhouse', 'Tiny home', 'Tower', 'Train']);
+    
+  const [room_types, setRoomTypes] = useState(['All room types', 'entire_home', 'hotel_room', 'private_room', 'shared_room']);
 
   // Filters
+
   const [countryFilter1, setCountryFilter1] = useState("All Countries");
   const [countryFilter2, setCountryFilter2] = useState("All Countries");
   const [countryFilter3, setCountryFilter3] = useState("All Countries");
   const [countryFilter4, setCountryFilter4] = useState("All Countries");
   const [countryFilter5, setCountryFilter5] = useState("All Countries");
+  const [listingTypeFilter, setListingType1] = useState("All listing types");
+  const [roomTypeFilter, setRoomType] = useState("All room types");
+
 
   // Data
   const [occupancyData, setOccupancyData] = useState([]);
@@ -141,10 +155,18 @@ export default function AirbnbAnalyticsDashboard() {
             >
               {countries.map(c => <option key={c}>{c}</option>)}
             </select>
+            <select
+              className="border rounded-md px-3 py-1"
+              value={listing_types}
+              onChange={(e) => setListingType1(e.target.value)}
+            >
+              {listing_types.map(c => <option key={c}>{c}</option>)}
+            </select>
+
             <button
               className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
               onClick={() =>
-                safeFetch(`http://localhost:5000/api/occupancy-by-type?country=${countryFilter3}`, setTypeData)
+                safeFetch(`http://localhost:5000/api/occupancy-by-type?country=${countryFilter3}&listing_type=${listingTypeFilter}`, setTypeData)
               }
             >
               Filter
@@ -175,10 +197,17 @@ export default function AirbnbAnalyticsDashboard() {
             >
               {countries.map(c => <option key={c}>{c}</option>)}
             </select>
+            <select
+              className="border rounded-md px-3 py-1"
+              value={countryFilter4}
+              onChange={(e) => setRoomType(e.target.value)}
+            >
+              {room_types.map(c => <option key={c}>{c}</option>)}
+            </select>
             <button
               className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
               onClick={() =>
-                safeFetch(`http://localhost:5000/api/occupancy-by-rating?country=${countryFilter4}`, setRatingData)
+                safeFetch(`http://localhost:5000/api/occupancy-by-rating?country=${countryFilter4}&room_type=${roomTypeFilter}`, setRatingData)
               }
             >
               Filter
